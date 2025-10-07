@@ -72,7 +72,7 @@ app.use((err, req, res, next) => {
 });
 
 
-mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/vikrant_syllabus', {
+mongoose.connect(process.env.MONGODB_URI || 'mongodb+srv://Prxhntt:<db_password>@cluster0.pbsnvwz.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0', {
   useNewUrlParser: true,
   useUnifiedTopology: true,
 })
