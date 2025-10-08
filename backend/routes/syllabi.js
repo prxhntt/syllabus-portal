@@ -150,8 +150,7 @@ router.delete('/:id', auth, async (req, res) => {
       });
     }
 
-    syllabus.isActive = false;
-    await syllabus.save();
+    await Syllabus.findByIdAndDelete(req.params.id);
 
     res.json({ message: 'Syllabus deleted successfully' });
   } catch (error) {
