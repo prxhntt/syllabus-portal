@@ -33,21 +33,21 @@ const syllabusSchema = new mongoose.Schema({
     type: String,
     trim: true
   },
-  filenameOnServer: {
+  fileUrl: {
     type: String,
     required: true
   },
-  originalFilename: {
+  publicId: {
+    type: String,
+    required: true
+  },
+  fileName: {
     type: String,
     required: true
   },
   fileSize: {
     type: Number,
     required: true
-  },
-  fileType: {
-    type: String,
-    default: 'application/pdf'
   },
   uploaderId: {
     type: mongoose.Schema.Types.ObjectId,

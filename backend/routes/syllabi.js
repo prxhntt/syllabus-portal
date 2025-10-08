@@ -1,13 +1,10 @@
 const express = require('express');
-const path = require('path');
-const fs = require('fs');
 const Syllabus = require('../models/Syllabus');
 const Course = require('../models/Course');
 const { auth } = require('../middleware/auth');
-const upload = require('../middleware/upload');
+const cloudinary = require('cloudinary').v2;
 
 const router = express.Router();
-
 
 router.get('/', async (req, res) => {
   try {
@@ -37,7 +34,6 @@ router.get('/', async (req, res) => {
   }
 });
 
-
 router.get('/:id', async (req, res) => {
   try {
     const syllabus = await Syllabus.findById(req.params.id)
@@ -54,33 +50,37 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-
-router.post('/:code', auth, upload.single('file'), async (req, res) => {
+router.post('/upload', auth, async (req, res) => {
   try {
-    if (!req.file) {
-      return res.status(400).json({ message: 'PDF file is required' });
+    const { courseCode, semester, subject, title, description, version, fileData, fileName } = req.body;
+
+    if (!fileData) {
+      return res.status(400).json({ message: 'No file data received' });
     }
 
-    const courseCode = req.params.code.toUpperCase();
-    const { semester, subject, title, description, version } = req.body;
-    
-
-    const course = await Course.findOne({ code: courseCode, isActive: true });
+    const course = await Course.findOne({ code: courseCode.toUpperCase(), isActive: true });
     if (!course) {
-      fs.unlinkSync(req.file.path);
       return res.status(404).json({ message: 'Course not found' });
     }
 
+    const uploadResult = await cloudinary.uploader.upload(fileData, {
+      resource_type: 'raw',
+      folder: 'syllabus-pdfs',
+      public_id: `syllabus_${courseCode}_${semester}_${Date.now()}`,
+      format: 'pdf'
+    });
+
     const syllabus = new Syllabus({
-      courseCode,
+      courseCode: courseCode.toUpperCase(),
       branch: course.branch,
       semester: parseInt(semester),
       subject,
       title,
       description,
-      filenameOnServer: req.file.filename,
-      originalFilename: req.file.originalname,
-      fileSize: req.file.size,
+      fileUrl: uploadResult.secure_url,
+      publicId: uploadResult.public_id,
+      fileName: fileName || `syllabus.pdf`,
+      fileSize: uploadResult.bytes,
       uploaderId: req.admin._id,
       version: version || 1
     });
@@ -88,68 +88,53 @@ router.post('/:code', auth, upload.single('file'), async (req, res) => {
     await syllabus.save();
     await syllabus.populate('uploaderId', 'username email');
     
-    res.status(201).json(syllabus);
+    res.status(201).json({
+      message: 'Syllabus uploaded successfully to cloud',
+      syllabus: syllabus
+    });
+
   } catch (error) {
-    if (req.file) {
-      fs.unlinkSync(req.file.path);
-    }
     console.error('Error uploading syllabus:', error);
-    res.status(500).json({ message: 'Server error' });
+    res.status(500).json({ 
+      message: 'Upload failed',
+      error: error.message 
+    });
   }
 });
-
 
 router.get('/:id/preview', async (req, res) => {
   try {
     const syllabus = await Syllabus.findById(req.params.id);
     
     if (!syllabus || !syllabus.isActive) {
-      return res.status(404).json({ message: 'File not found' });
-    }
-
-    const filePath = path.join(__dirname, '../uploads', syllabus.courseCode, syllabus.filenameOnServer);
-    
-    if (!fs.existsSync(filePath)) {
-      return res.status(404).json({ message: 'File not found on server' });
+      return res.status(404).json({ message: 'Syllabus not found' });
     }
 
     await Syllabus.findByIdAndUpdate(req.params.id, { $inc: { viewCount: 1 } });
     
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `inline; filename="${syllabus.originalFilename}"`);
-    res.sendFile(filePath);
+    res.redirect(syllabus.fileUrl);
   } catch (error) {
     console.error('Error previewing PDF:', error);
     res.status(500).json({ message: 'Server error' });
   }
 });
 
-
 router.get('/:id/download', async (req, res) => {
   try {
     const syllabus = await Syllabus.findById(req.params.id);
     
     if (!syllabus || !syllabus.isActive) {
-      return res.status(404).json({ message: 'File not found' });
-    }
-
-    const filePath = path.join(__dirname, '../uploads', syllabus.courseCode, syllabus.filenameOnServer);
-    
-    if (!fs.existsSync(filePath)) {
-      return res.status(404).json({ message: 'File not found on server' });
+      return res.status(404).json({ message: 'Syllabus not found' });
     }
 
     await Syllabus.findByIdAndUpdate(req.params.id, { $inc: { downloadCount: 1 } });
     
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="${syllabus.originalFilename}"`);
-    res.sendFile(filePath);
+    res.redirect(syllabus.fileUrl);
   } catch (error) {
     console.error('Error downloading PDF:', error);
     res.status(500).json({ message: 'Server error' });
   }
 });
-
 
 router.delete('/:id', auth, async (req, res) => {
   try {
@@ -159,15 +144,10 @@ router.delete('/:id', auth, async (req, res) => {
       return res.status(404).json({ message: 'Syllabus not found' });
     }
 
-    // Check permissions
-    if (req.admin.role !== 'superadmin' && !req.admin.assignedCourses.includes(syllabus.courseCode)) {
-      return res.status(403).json({ message: 'Access denied' });
-    }
-
-    const filePath = path.join(__dirname, '../uploads', syllabus.courseCode, syllabus.filenameOnServer);
-    
-    if (fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath);
+    if (syllabus.publicId) {
+      await cloudinary.uploader.destroy(syllabus.publicId, {
+        resource_type: 'raw'
+      });
     }
 
     syllabus.isActive = false;

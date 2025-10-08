@@ -1,9 +1,8 @@
-
 class AdminPage {
     constructor() {
         this.currentAdmin = null;
         this.courses = [];
-        this.allSyllabi = []; 
+        this.allSyllabi = [];
         this.init();
     }
 
@@ -13,14 +12,29 @@ class AdminPage {
         await this.loadCourses();
         this.setupEventListeners();
         this.setupAdminFunctionality();
+        this.setupInactivityTimer();
+        this.setupBeforeUnload();
         console.log("✅ Admin page initialized");
     }
 
     async checkAuth() {
         const token = localStorage.getItem("adminToken");
+        const tokenTimestamp = localStorage.getItem("tokenTimestamp");
         
         if (!token) {
             this.showLoginSection();
+            return;
+        }
+
+        const currentTime = Date.now();
+        const tokenAge = currentTime - parseInt(tokenTimestamp);
+        const maxAge = 24 * 60 * 60 * 1000;
+
+        if (tokenAge > maxAge) {
+            localStorage.removeItem("adminToken");
+            localStorage.removeItem("tokenTimestamp");
+            this.showLoginSection();
+            Utils.showToast("Session expired. Please login again.", "warning");
             return;
         }
 
@@ -30,8 +44,42 @@ class AdminPage {
             this.showAdminDashboard();
         } catch (error) {
             localStorage.removeItem("adminToken");
+            localStorage.removeItem("tokenTimestamp");
             this.showLoginSection();
         }
+    }
+
+    setupInactivityTimer() {
+        let inactivityTime = 0;
+        const maxInactivity = 30 * 60 * 1000;
+        
+        const resetTimer = () => {
+            inactivityTime = 0;
+        };
+        
+        const activityEvents = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart'];
+        
+        activityEvents.forEach(event => {
+            document.addEventListener(event, resetTimer, true);
+        });
+        
+        setInterval(() => {
+            if (this.currentAdmin) {
+                inactivityTime += 1000;
+                if (inactivityTime >= maxInactivity) {
+                    this.handleLogout();
+                    Utils.showToast("Auto logged out due to inactivity", "warning");
+                }
+            }
+        }, 1000);
+    }
+
+    setupBeforeUnload() {
+        window.addEventListener('beforeunload', (e) => {
+            if (this.currentAdmin) {
+                localStorage.setItem("tokenTimestamp", Date.now().toString());
+            }
+        });
     }
 
     showLoginSection() {
@@ -53,6 +101,18 @@ class AdminPage {
         if (adminNav) adminNav.style.display = "block";
         if (loginNav) loginNav.style.display = "none";
         if (logoutNav) logoutNav.style.display = "block";
+    }
+
+    updateUIForLogout() {
+        const adminNav = document.getElementById("admin-nav");
+        const loginNav = document.getElementById("login-nav");
+        const logoutNav = document.getElementById("logout-nav");
+        const adminControls = document.getElementById("admin-controls");
+
+        if (adminNav) adminNav.style.display = "none";
+        if (loginNav) loginNav.style.display = "block";
+        if (logoutNav) logoutNav.style.display = "none";
+        if (adminControls) adminControls.style.display = "none";
     }
 
     initTheme() {
@@ -93,6 +153,10 @@ class AdminPage {
             if (response.success && response.token) {
                 api.setToken(response.token);
                 this.currentAdmin = response.admin;
+                
+                localStorage.setItem("adminToken", response.token);
+                localStorage.setItem("tokenTimestamp", Date.now().toString());
+                
                 this.showAdminDashboard();
                 Utils.showToast("Login successful!", "success");
             }
@@ -104,11 +168,14 @@ class AdminPage {
     handleLogout() {
         api.setToken(null);
         localStorage.removeItem("adminToken");
-        window.location.href = "/";
+        localStorage.removeItem("tokenTimestamp");
+        this.currentAdmin = null;
+        this.updateUIForLogout();
+        Utils.showToast("Logged out successfully", "success");
+        this.showSection("home");
     }
 
     setupEventListeners() {
-      
         document.getElementById("mobile-menu-trigger")?.addEventListener("click", () => {
             this.toggleMobileMenu();
         });
@@ -117,7 +184,6 @@ class AdminPage {
             this.toggleTheme();
         });
 
-       
         document.getElementById("admin-login-form")?.addEventListener("submit", (e) => {
             e.preventDefault();
             const email = document.getElementById("email").value;
@@ -125,15 +191,12 @@ class AdminPage {
             this.handleLogin(email, password);
         });
 
-      
         document.getElementById("logout-btn")?.addEventListener("click", () => {
             this.handleLogout();
         });
 
-      
         this.setupPasswordToggle();
 
-     
         document.getElementById('nav-overlay')?.addEventListener('click', () => {
             this.closeMobileMenu();
         });
@@ -174,20 +237,17 @@ class AdminPage {
     }
 
     setupAdminFunctionality() {
-       
         const uploadForm = document.getElementById("upload-form");
         if (uploadForm) {
             uploadForm.addEventListener("submit", (e) => this.handleFileUpload(e));
         }
 
-       
         document.querySelectorAll(".admin-tab-btn").forEach((btn) => {
             btn.addEventListener("click", () => {
                 this.switchAdminTab(btn.dataset.tab);
             });
         });
 
-  
         this.setupAdminSearch();
     }
 
@@ -202,12 +262,10 @@ class AdminPage {
             const courseFilter = adminCourseFilter ? adminCourseFilter.value : '';
 
             if (!query && !courseFilter) {
-          
                 this.displayAdminSyllabi(this.allSyllabi);
                 return;
             }
 
-           
             const filteredSyllabi = this.allSyllabi.filter(syllabus => {
                 const matchesCourse = !courseFilter || syllabus.courseCode === courseFilter;
                 const matchesSearch = !query || 
@@ -219,7 +277,6 @@ class AdminPage {
                 return matchesCourse && matchesSearch;
             });
 
-          
             if (query) {
                 filteredSyllabi.sort((a, b) => {
                     const aTitle = a.title.toLowerCase();
@@ -229,51 +286,42 @@ class AdminPage {
                     const aCourse = a.courseCode.toLowerCase();
                     const bCourse = b.courseCode.toLowerCase();
 
-                  
                     if (aTitle === query && bTitle !== query) return -1;
                     if (bTitle === query && aTitle !== query) return 1;
 
                     if (aSubject === query && bSubject !== query) return -1;
                     if (bSubject === query && aSubject !== query) return 1;
 
-                  
                     if (aCourse === query && bCourse !== query) return -1;
                     if (bCourse === query && aCourse !== query) return 1;
 
-                    
                     const aTitleStartsWith = aTitle.startsWith(query);
                     const bTitleStartsWith = bTitle.startsWith(query);
                     if (aTitleStartsWith && !bTitleStartsWith) return -1;
                     if (bTitleStartsWith && !aTitleStartsWith) return 1;
 
-                  
                     const aSubjectStartsWith = aSubject.startsWith(query);
                     const bSubjectStartsWith = bSubject.startsWith(query);
                     if (aSubjectStartsWith && !bSubjectStartsWith) return -1;
                     if (bSubjectStartsWith && !aSubjectStartsWith) return 1;
 
-                  
                     const aTitleContains = aTitle.includes(query);
                     const bTitleContains = bTitle.includes(query);
                     if (aTitleContains && !bTitleContains) return -1;
                     if (bTitleContains && !aTitleContains) return 1;
 
-                 
                     const aSubjectContains = aSubject.includes(query);
                     const bSubjectContains = bSubject.includes(query);
                     if (aSubjectContains && !bSubjectContains) return -1;
                     if (bSubjectContains && !aSubjectContains) return 1;
 
-                   
                     return 0;
                 });
             }
 
-            
             this.displayAdminSyllabi(filteredSyllabi);
         };
 
-      
         adminSearch.addEventListener("input", performSearch);
         adminSearch.addEventListener("keypress", (e) => {
             if (e.key === "Enter") performSearch();
@@ -285,19 +333,16 @@ class AdminPage {
     }
 
     switchAdminTab(tabName) {
-    
         document.querySelectorAll(".admin-tab-btn").forEach((btn) => {
             btn.classList.remove("active");
         });
         document.querySelector(`[data-tab="${tabName}"]`).classList.add("active");
 
-      
         document.querySelectorAll(".admin-tab").forEach((tab) => {
             tab.classList.remove("active");
         });
         document.getElementById(`${tabName}-tab`).classList.add("active");
 
-      
         if (tabName === "manage") {
             this.loadAdminSyllabi();
         } else if (tabName === "analytics") {
@@ -306,63 +351,91 @@ class AdminPage {
     }
 
     async handleFileUpload(e) {
-        e.preventDefault();
+    e.preventDefault();
 
-        if (!this.currentAdmin) {
-            Utils.showToast("Please log in as admin", "error");
-            return;
-        }
+    if (!this.currentAdmin) {
+        Utils.showToast("Please log in as admin", "error");
+        return;
+    }
 
-        const formData = new FormData();
-        const courseCode = document.getElementById("upload-course").value;
-        const semester = document.getElementById("upload-semester").value;
-        const subject = document.getElementById("upload-subject").value;
-        const title = document.getElementById("upload-title").value;
-        const description = document.getElementById("upload-description").value;
-        const version = document.getElementById("upload-version").value;
-        const fileInput = document.getElementById("upload-file");
-        const file = fileInput.files[0];
+    const courseCode = document.getElementById("upload-course").value;
+    const semester = document.getElementById("upload-semester").value;
+    const subject = document.getElementById("upload-subject").value;
+    const title = document.getElementById("upload-title").value;
+    const description = document.getElementById("upload-description").value;
+    const version = document.getElementById("upload-version").value;
+    const fileInput = document.getElementById("upload-file");
+    const file = fileInput.files[0];
 
-        if (!file) {
-            Utils.showToast("Please select a PDF file", "error");
-            return;
-        }
+    if (!file) {
+        Utils.showToast("Please select a PDF file", "error");
+        return;
+    }
 
-        if (!Utils.isPDFFile(file)) {
-            Utils.showToast("Only PDF files are allowed", "error");
-            return;
-        }
+    if (!Utils.isPDFFile(file)) {
+        Utils.showToast("Only PDF files are allowed", "error");
+        return;
+    }
 
-        formData.append("semester", semester);
-        formData.append("subject", subject);
-        formData.append("title", title);
-        formData.append("description", description);
-        formData.append("version", version);
-        formData.append("file", file);
+    const convertToBase64 = (file) => {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = error => reject(error);
+        });
+    };
 
-        try {
-            Utils.showLoading(true);
-            await api.uploadSyllabus(courseCode, formData);
+    try {
+        Utils.showLoading(true);
+        
+        const base64File = await convertToBase64(file);
+        
+        const uploadData = {
+            courseCode: courseCode,
+            semester: semester,
+            subject: subject,
+            title: title,
+            description: description,
+            version: version || 1,
+            fileData: base64File,
+            fileName: file.name
+        };
 
-            Utils.showToast("File uploaded successfully!", "success");
+        const response = await fetch('/api/syllabi/upload', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${localStorage.getItem('adminToken')}`
+            },
+            body: JSON.stringify(uploadData)
+        });
+
+        const result = await response.json();
+
+        if (response.ok) {
+            Utils.showToast("File uploaded successfully to cloud!", "success");
             e.target.reset();
             
-         
             if (document.getElementById("manage-tab").classList.contains("active")) {
                 this.loadAdminSyllabi();
             }
-        } catch (error) {
-            Utils.showToast("Upload failed: " + error.message, "error");
-            console.error("Upload error:", error);
-        } finally {
-            Utils.showLoading(false);
+        } else {
+            throw new Error(result.message || 'Upload failed');
         }
+
+    } catch (error) {
+        Utils.showToast("Upload failed: " + error.message, "error");
+        console.error("Upload error:", error);
+    } finally {
+        Utils.showLoading(false);
     }
+}
 
     async loadAdminSyllabi() {
         try {
             const syllabi = await api.getAdminSyllabi();
-            this.allSyllabi = syllabi; // Store for search functionality
+            this.allSyllabi = syllabi;
             this.displayAdminSyllabi(syllabi);
         } catch (error) {
             Utils.showToast('Failed to load admin syllabi', 'error');
@@ -409,7 +482,6 @@ class AdminPage {
             )
             .join("");
 
-      
         container.querySelectorAll(".delete-syllabus-admin").forEach((btn) => {
             btn.addEventListener("click", () => {
                 this.deletePdfAdmin(btn.dataset.id);
@@ -423,7 +495,7 @@ class AdminPage {
         try {
             await api.deleteSyllabus(syllabusId);
             Utils.showToast("File deleted successfully", "success");
-            this.loadAdminSyllabi(); // Reload the list
+            this.loadAdminSyllabi();
         } catch (error) {
             Utils.showToast("Failed to delete file", "error");
             console.error("Error deleting file:", error);
@@ -491,7 +563,6 @@ class AdminPage {
                 ).join("");
         }
 
-     
         const semesterSelect = document.getElementById("upload-semester");
         if (semesterSelect) {
             semesterSelect.innerHTML = 
@@ -502,7 +573,6 @@ class AdminPage {
         }
     }
 }
-
 
 document.addEventListener("DOMContentLoaded", () => {
     window.adminPage = new AdminPage();
