@@ -3,8 +3,11 @@ const Syllabus = require('../models/Syllabus');
 const Course = require('../models/Course');
 const { auth } = require('../middleware/auth');
 const cloudinary = require('cloudinary').v2;
+const fetch = require('node-fetch'); 
 
 const router = express.Router();
+
+
 
 router.get('/', async (req, res) => {
   try {
@@ -63,11 +66,20 @@ router.post('/upload', auth, async (req, res) => {
       return res.status(404).json({ message: 'Course not found' });
     }
 
+  
     const uploadResult = await cloudinary.uploader.upload(fileData, {
       resource_type: 'raw',
       folder: 'syllabus-pdfs',
       public_id: `syllabus_${courseCode}_${semester}_${Date.now()}`,
-      format: 'pdf'
+      format: 'pdf',
+      type: 'upload',
+      access_mode: 'public'
+    });
+
+    console.log('Cloudinary Upload:', {
+      secure_url: uploadResult.secure_url,
+      public_id: uploadResult.public_id,
+      format: uploadResult.format
     });
 
     const syllabus = new Syllabus({
@@ -79,7 +91,7 @@ router.post('/upload', auth, async (req, res) => {
       description,
       fileUrl: uploadResult.secure_url,
       publicId: uploadResult.public_id,
-      fileName: fileName || `syllabus.pdf`,
+      fileName: fileName || `syllabus_${courseCode}_${semester}.pdf`,
       fileSize: uploadResult.bytes,
       uploaderId: req.admin._id,
       version: version || 1
@@ -102,6 +114,7 @@ router.post('/upload', auth, async (req, res) => {
   }
 });
 
+
 router.get('/:id/preview', async (req, res) => {
   try {
     const syllabus = await Syllabus.findById(req.params.id);
@@ -111,13 +124,27 @@ router.get('/:id/preview', async (req, res) => {
     }
 
     await Syllabus.findByIdAndUpdate(req.params.id, { $inc: { viewCount: 1 } });
+
     
-    res.redirect(syllabus.fileUrl);
+    const response = await fetch(syllabus.fileUrl);
+    
+    if (!response.ok) {
+      throw new Error(`Cloudinary response: ${response.status}`);
+    }
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="${syllabus.fileName}"`);
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+
+   
+    response.body.pipe(res);
+    
   } catch (error) {
     console.error('Error previewing PDF:', error);
-    res.status(500).json({ message: 'Server error' });
+    res.status(500).json({ message: 'Server error: ' + error.message });
   }
 });
+
 
 router.get('/:id/download', async (req, res) => {
   try {
@@ -128,11 +155,25 @@ router.get('/:id/download', async (req, res) => {
     }
 
     await Syllabus.findByIdAndUpdate(req.params.id, { $inc: { downloadCount: 1 } });
+
+ 
+    const response = await fetch(syllabus.fileUrl);
     
-    res.redirect(syllabus.fileUrl);
+    if (!response.ok) {
+      throw new Error(`Cloudinary response: ${response.status}`);
+    }
+
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${syllabus.fileName}"`);
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+
+ 
+    response.body.pipe(res);
+    
   } catch (error) {
     console.error('Error downloading PDF:', error);
-    res.status(500).json({ message: 'Server error' });
+    res.status(500).json({ message: 'Server error: ' + error.message });
   }
 });
 

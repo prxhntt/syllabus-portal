@@ -149,35 +149,40 @@ class CourseDetailsPage {
         });
     }
 
-    async viewPdf(syllabusId) {
-        try {
-            const syllabus = this.syllabi.find((s) => s._id === syllabusId) || 
-                            await api.getSyllabus(syllabusId);
+ async viewPdf(syllabusId) {
+    try {
+        const syllabus = this.syllabi.find((s) => s._id === syllabusId) || 
+        await api.getSyllabus(syllabusId);
 
-            document.getElementById("pdf-title").textContent = syllabus.title;
-            document.getElementById("pdf-viewer").src = await api.previewSyllabus(syllabusId);
+        document.getElementById("pdf-title").textContent = syllabus.title;
+        
+  
+        const pdfUrl = `/api/syllabi/${syllabusId}/preview`;
+        document.getElementById("pdf-viewer").src = pdfUrl;
 
-            const modal = document.getElementById("pdf-modal");
-            modal.classList.add("active");
+        const modal = document.getElementById("pdf-modal");
+        modal.classList.add("active");
 
-           
-            const downloadBtn = document.getElementById("download-pdf");
-            downloadBtn.onclick = () => this.downloadPdf(syllabusId);
-        } catch (error) {
-            Utils.showToast("Failed to open PDF", "error");
-            console.error("Error viewing PDF:", error);
-        }
+       
+        const downloadBtn = document.getElementById("download-pdf");
+        downloadBtn.onclick = () => this.downloadPdf(syllabusId);
+        
+    } catch (error) {
+        Utils.showToast("Failed to open PDF", "error");
+        console.error("Error viewing PDF:", error);
     }
+}
 
-    async downloadPdf(syllabusId) {
-        try {
-            const downloadUrl = await api.downloadSyllabus(syllabusId);
-            window.open(downloadUrl, "_blank");
-        } catch (error) {
-            Utils.showToast("Failed to download PDF", "error");
-            console.error("Error downloading PDF:", error);
-        }
+async downloadPdf(syllabusId) {
+    try {
+        
+        const downloadUrl = `/api/syllabi/${syllabusId}/download`;
+        window.open(downloadUrl, "_blank");
+    } catch (error) {
+        Utils.showToast("Failed to download PDF", "error");
+        console.error("Error downloading PDF:", error);
     }
+}
 
     setupEventListeners() {
       
