@@ -19,7 +19,7 @@ app.set('trust proxy', 1);
 app.use(cors({
   origin: process.env.NODE_ENV === 'production' 
     ? ['https://vu-syllabusportal.onrender.com'] 
-    : ['http://localhost:3000', 'http://localhost:5001'],
+    : ['http://localhost:3000', 'http://localhost:5002'],
   credentials: true
 }));
 
@@ -77,7 +77,7 @@ mongoose.connect(process.env.MONGODB_URI || 'mongodb+srv://Prxhntt:<db_password>
 .then(() => console.log('✅ MongoDB connected successfully'))
 .catch(err => console.log('❌ MongoDB connection error:', err));
 
-const PORT = process.env.PORT || 5001;
+const PORT = process.env.PORT || 5002;
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`🔗 http://localhost:${PORT}`);
